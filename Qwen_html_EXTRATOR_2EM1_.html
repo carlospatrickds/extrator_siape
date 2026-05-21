@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extrator SIAPE - Dual</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root { --primary: #0f52ba; --bg: #f4f6f9; --card: #fff; --text: #333; --border: #e0e0e0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: var(--primary); margin-bottom: 10px; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+    .tab-btn { padding: 10px 20px; border: none; background: #e0e0e0; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: bold; color: #555; }
+    .tab-btn.active { background: var(--card); color: var(--primary); box-shadow: 0 -2px 5px rgba(0,0,0,0.1); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .card { background: var(--card); padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    input[type="file"] { padding: 10px; border: 2px dashed var(--border); width: 100%; box-sizing: border-box; cursor: pointer; }
+    .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+    select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+    th { background: var(--primary); color: #fff; position: sticky; top: 0; }
+    tr:hover { background: #f9f9f9; }
+    .btn { display: inline-block; padding: 10px 20px; background: var(--primary); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; text-decoration: none; margin-right: 10px; }
+    .btn:hover { opacity: 0.9; }
+    .btn-secondary { background: #6c757d; font-size: 12px; padding: 5px 10px; }
+    .status { padding: 10px; border-radius: 6px; margin-bottom: 15px; text-align: center; font-weight: bold; }
+    .success { background: #d4edda; color: #155724; }
+    .warning { background: #fff3cd; color: #856404; }
+    .error { background: #f8d7da; color: #721c24; }
+    .hidden { display: none; }
+    .debug { background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; margin-top: 10px; }
+    details { margin-bottom: 15px; }
+    summary { cursor: pointer; color: var(--primary); font-weight: bold; }
+    .note { font-size: 12px; color: #666; margin-top: 5px; margin-bottom: 15px; }
+    .chk-container { max-height: 180px; overflow-y: auto; border: 1px solid var(--border); padding: 10px; border-radius: 6px; background: #fafafa; }
+    .chk-item { display: flex; align-items: center; margin-bottom: 6px; cursor: pointer; }
+    .chk-item input { margin-right: 8px; transform: scale(1.1); cursor: pointer; }
+    .chk-item label { font-size: 14px; cursor: pointer; flex: 1; }
+    .counter { font-size: 12px; color: #555; margin-top: 5px; text-align: right; }
+    .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 15px; }
+    .meta-box { background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid var(--border); }
+    .meta-label { font-size: 12px; color: #666; font-weight: bold; }
+    .meta-val { font-size: 15px; color: #333; margin-top: 4px; }
+    /* Destaque visual para rubricas padrão */
+    .chk-item:has(input:checked) label { color: var(--primary); font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1> Extrator de Fichas Financeiras SIAPE</h1>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('antiga')">📘 Ficha Antiga (Padrão |)</button>
+      <button class="tab-btn" onclick="switchTab('nova')"> Ficha Nova (Formato Alternativo)</button>
+    </div>
+
+    <!-- ================= ABA 1 ================= -->
+    <div id="tab-antiga" class="tab-content active">
+      <p class="note">Lê todas as páginas. Descrição estrita entre | |. Exporta CSV.</p>
+      <div class="card"><input type="file" id="pdf1" accept=".pdf"></div>
+      <div id="st1" class="status hidden"></div>
+      <div id="ld1" class="status hidden">⏳ Processando Ficha Antiga...</div>
+      <details id="dbg1" class="hidden"><summary>🔍 Debug</summary><div id="dbgTxt1" class="debug"></div></details>
+      <div id="res1" class="hidden">
+        <div class="filters">
+          <div>
+            <label style="display:flex;justify-content:space-between;align-items:center;">Rubricas:<span><button type="button" class="btn-secondary" onclick="toggleAll('chk1',true)">Marcar Todas</button> <button type="button" class="btn-secondary" onclick="toggleAll('chk1',false)">Limpar</button></span></label>
+            <div id="chk1" class="chk-container"></div><div id="cnt1" class="counter">0</div>
+          </div>
+          <div><label>Tipo:</label><select id="tp1" multiple size="4"><option value="DESCONTO" selected>DESCONTO</option><option value="RECEITA" selected>RECEITA</option></select></div>
+        </div>
+        <div style="overflow-x:auto;max-height:600px;"><table id="tbl1"><thead><tr><th>Discriminação</th><th>Valor</th><th>Competência</th><th>Pág.</th><th>Ano</th><th>Tipo</th></tr></thead><tbody></tbody></table></div>
+        <button class="btn" onclick="exportCSV1()">📥 Exportar CSV</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('dbg1').classList.toggle('hidden')">🔧 Debug</button>
+      </div>
+    </div>
+
+    <!-- ================= ABA 2 ================= -->
+    <div id="tab-nova" class="tab-content">
+      <p class="note">Extrai metadados, detecta Rendimento/Desconto automaticamente. Exporta Excel com 3 abas.</p>
+      <div class="card"><input type="file" id="pdf2" accept=".pdf"></div>
+      <div id="st2" class="status hidden"></div>
+      <div id="ld2" class="status hidden">⏳ Processando Ficha Nova...</div>
+      <div id="res2" class="hidden">
+        <div class="meta-grid" id="metaDisplay"></div>
+        <div class="filters">
+          <div>
+            <label style="display:flex;justify-content:space-between;align-items:center;">Rubricas:<span><button type="button" class="btn-secondary" onclick="toggleAll('chk2',true)">Marcar Todas</button> <button type="button" class="btn-secondary" onclick="toggleAll('chk2',false)">Limpar</button></span></label>
+            <div id="chk2" class="chk-container"></div><div id="cnt2" class="counter">0</div>
+          </div>
+          <div><label>Tipo:</label><select id="tp2" multiple size="4"><option value="RECEITA" selected>RECEITA</option><option value="DESCONTO" selected>DESCONTO</option><option value="INDEFINIDO" selected>INDEFINIDO</option></select></div>
+        </div>
+        <div style="overflow-x:auto;max-height:600px;"><table id="tbl2"><thead><tr><th>Discriminação</th><th>Valor</th><th>Competência</th><th>Pág.</th><th>Ano</th><th>Tipo</th></tr></thead><tbody></tbody></table></div>
+        <button class="btn" onclick="exportXLSX2()">📥 Exportar Excel (3 Abas)</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ================= UTILS =================
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', i===(tab==='antiga'?0:1)));
+      document.getElementById('tab-antiga').classList.toggle('active', tab==='antiga');
+      document.getElementById('tab-nova').classList.toggle('active', tab==='nova');
+    }
+    
+    function toggleAll(containerId, state) {
+      const container = document.getElementById(containerId);
+      if(container) container.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = state);
+      if(containerId==='chk1') { atualizarTabela1(); atualizarContador1(); }
+      else if(containerId==='chk2') { atualizarTabela2(); atualizarContador2(); }
+    }
+    
+    async function lerPDF(file) {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const linhas = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        const grupos = {};
+        for (const item of tc.items) {
+          const y = Math.round(item.transform[5]);
+          let k = null;
+          for (const ky in grupos) if (Math.abs(Number(ky)-y)<=3) { k=ky; break; }
+          if(!k) { k=y; grupos[k]=[]; }
+          grupos[k].push(item);
+        }
+        const ys = Object.keys(grupos).map(Number).sort((a,b)=>b-a);
+        for(const y of ys) {
+          grupos[y].sort((a,b)=>a.transform[4]-b.transform[4]);
+          const txt = grupos[y].map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();
+          if(txt) linhas.push({texto:txt, pagina:p});
+        }
+      }
+      return linhas;
+    }
+
+    // ================= CORREÇÃO DE TEXTO & SELEÇÃO PADRÃO =================
+    function limparTexto(txt) {
+      if(!txt) return '';
+      // 1. Remove caractere de substituição (losango/interrogação)
+      txt = txt.replace(/[\uFFFD]/g, '');
+      // 2. Correções contextuais exatas
+      if(txt.includes('GRATIFICA') && txt.includes('NATALINA')) return 'GRATIFICAÇÃO NATALINA AT';
+      if(txt.includes('FERIAS') && txt.includes('ADICIONAL')) return 'FERIAS - ADICIONAL 1/3';
+      if(txt.includes('ABONO') && txt.includes('PERMANENCIA')) return 'ABONO DE PERMANENCIA EC 41/03';
+      // 3. Fallback UTF-8
+      try {
+        const bytes = new Uint8Array([...txt].map(c=>c.charCodeAt(0)));
+        return new TextDecoder('utf-8').decode(bytes);
+      } catch { return txt.trim(); }
+    }
+
+    function isRubricaPrincipal(desc) {
+      if(!desc) return false;
+      const d = desc.toUpperCase();
+      return (
+        (d.includes('GRATIFICA') && d.includes('NATALINA')) ||
+        (d.includes('FERIAS') && d.includes('ADICIONAL')) ||
+        (d.includes('ABONO') && d.includes('PERMANENCIA'))
+      );
+    }
+
+    // ================= FICHA ANTIGA =================
+    const MESES1 = { JAN:"01", FEV:"02", MAR:"03", ABR:"04", MAI:"05", JUN:"06", JUL:"07", AGO:"08", SET:"09", OUT:"10", NOV:"11", DEZ:"12" };
+    const RE_INICIO1 = /Siape\s*-\s*Sistema Integrado de Administracao de Recursos Humanos/i;
+    const RE_FIM1 = /TOTAL\s+L[IÍ]QUIDO/i;
+    const RE_ANO1 = /Ficha Financeira referente a:\s*(\d{4})/i;
+    const RE_VALOR1 = /\d{1,3}(?:\.\d{3})*,\d{2}/g;
+    let dados1 = [];
+
+    document.getElementById('pdf1').addEventListener('change', async e => {
+      const f = e.target.files[0]; if(!f) return;
+      document.getElementById('res1').classList.add('hidden');
+      document.getElementById('st1').className='status hidden';
+      document.getElementById('ld1').classList.remove('hidden');
+      try {
+        const linhas = await lerPDF(f);
+        document.getElementById('dbgTxt1').textContent = `Páginas: ${linhas.length?linhas[linhas.length-1].pagina:0}\n`+linhas.slice(0,40).map(l=>`[P${l.pagina}] ${l.texto}`).join('\n');
+        document.getElementById('dbg1').classList.remove('hidden');
+        dados1 = processarFicha1(linhas);
+        if(!dados1.length) {
+          document.getElementById('st1').className='status warning';
+          document.getElementById('st1').textContent='⚠️ Nenhum dado encontrado.';
+        } else {
+          renderizarFiltros1();
+          atualizarTabela1();
+          document.getElementById('st1').className='status success';
+          document.getElementById('st1').textContent=`✅ ${dados1.length} registros extraídos.`;
+          document.getElementById('res1').classList.remove('hidden');
+        }
+      } catch(err) {
+        document.getElementById('st1').className='status error';
+        document.getElementById('st1').textContent=`❌ ${err.message}`;
+      }
+      document.getElementById('ld1').classList.add('hidden');
+    });
+
+    function processarFicha1(linhas) {
+      const regs = [];
+      let estado='BUSCA_INICIO', ano=null, meses=[], idx=-1;
+      for(const l of linhas) {
+        const txt = l.texto;
+        if(RE_INICIO1.test(txt)) { estado='BUSCA_ANO'; ano=null; meses=[]; idx=-1; continue; }
+        if((estado==='BUSCA_ANO'||estado==='BUSCA_MESES') && RE_ANO1.test(txt)) { ano=txt.match(RE_ANO1)[1]; estado='BUSCA_MESES'; continue; }
+        if(estado==='BUSCA_MESES' && txt.includes('|')) {
+          const m = Object.keys(MESES1).filter(k=>txt.includes(k));
+          if(m.length>=3) { meses=m; idx=txt.split('|').map(c=>c.trim()).findIndex(c=>meses.includes(c)); estado='LEITURA'; continue; }
+        }
+        if(estado==='LEITURA') {
+          if(RE_FIM1.test(txt)) continue;
+          if(txt.includes('|') && meses.length>0 && idx!==-1 && ano) {
+            const cols = txt.split('|').map(c=>c.trim());
+            if(cols.length<=Math.max(idx+1,2)) continue;
+            const desc = limparTexto(cols[1]); // ✅ APLICA LIMPEZA
+            if(!desc) continue;
+            const tipo = (cols[2]||'').toUpperCase().includes('D') ? 'DESCONTO' : 'RECEITA';
+            const vals = cols.slice(idx, idx+meses.length);
+            for(let i=0;i<meses.length;i++) {
+              const mv = vals[i]?.match(RE_VALOR1);
+              if(mv) regs.push({Discriminacao:desc, Valor:mv[0], Competencia:`${MESES1[meses[i]]}/${ano}`, Pagina:l.pagina, Ano:ano, Tipo:tipo});
+            }
+          }
+        }
+      }
+      return regs;
+    }
+    
+    function renderizarFiltros1() {
+      const u = [...new Set(dados1.map(r=>r.Discriminacao))].sort();
+      document.getElementById('chk1').innerHTML = u.map((r,i)=>{
+        const checked = isRubricaPrincipal(r) ? 'checked' : ''; // ✅ SELEÇÃO PADRÃO
+        return `<div class="chk-item"><input type="checkbox" id="r1_${i}" value="${r}" ${checked}><label for="r1_${i}">${r}</label></div>`;
+      }).join('');
+      atualizarContador1();
+    }
+    function getSel1() { return Array.from(document.querySelectorAll('#chk1 input:checked')).map(c=>c.value); }
+    function atualizarContador1() { const s=document.querySelectorAll('#chk1 input:checked').length; document.getElementById('cnt1').textContent=`${s} selecionadas`; }
+    function atualizarTabela1() {
+      const s=getSel1(), t=Array.from(document.getElementById('tp1').selectedOptions).map(o=>o.value);
+      const f = dados1.filter(r=>s.includes(r.Discriminacao) && t.includes(r.Tipo));
+      document.querySelector('#tbl1 tbody').innerHTML = f.map(r=>`<tr><td>${r.Discriminacao}</td><td>${r.Valor}</td><td>${r.Competencia}</td><td>${r.Pagina}</td><td>${r.Ano}</td><td>${r.Tipo}</td></tr>`).join('');
+    }
+    document.getElementById('chk1').addEventListener('change',()=>{atualizarTabela1();atualizarContador1();});
+    document.getElementById('tp1').addEventListener('change',atualizarTabela1);
+    function exportCSV1() {
+      const s=getSel1(), t=Array.from(document.getElementById('tp1').selectedOptions).map(o=>o.value);
+      const f = dados1.filter(r=>s.includes(r.Discriminacao) && t.includes(r.Tipo));
+      if(!f.length) return alert('Selecione rubricas.');
+      const csv = '\uFEFF' + ['Discriminacao;Valor;Competencia;Pagina;Ano;Tipo', ...f.map(r=>`"${r.Discriminacao}";"${r.Valor}";"${r.Competencia}";"${r.Pagina}";"${r.Ano}";"${r.Tipo}"`)].join('\r\n');
+      const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); a.download='extracao_antiga.csv'; a.click();
+    }
+
+    // ================= FICHA NOVA =================
+    const MESES2 = { JAN:1, FEV:2, MAR:3, ABR:4, MAI:5, JUN:6, JUL:7, AGO:8, SET:9, OUT:10, NOV:11, DEZ:12 };
+    let dados2 = [], metadados2 = {};
+
+    document.getElementById('pdf2').addEventListener('change', async e => {
+      const f = e.target.files[0]; if(!f) return;
+      document.getElementById('res2').classList.add('hidden');
+      document.getElementById('st2').className='status hidden';
+      document.getElementById('ld2').classList.remove('hidden');
+      try {
+        const linhas = await lerPDF(f);
+        const res = processarFicha2(linhas);
+        dados2 = res.dados;
+        metadados2 = res.meta;
+        if(!dados2.length) {
+          document.getElementById('st2').className='status warning';
+          document.getElementById('st2').textContent='⚠️ Nenhum dado encontrado.';
+        } else {
+          renderizarMetadados2();
+          renderizarFiltros2();
+          atualizarTabela2();
+          document.getElementById('st2').className='status success';
+          document.getElementById('st2').textContent=`✅ ${dados2.length} registros extraídos.`;
+          document.getElementById('res2').classList.remove('hidden');
+        }
+      } catch(err) {
+        document.getElementById('st2').className='status error';
+        document.getElementById('st2').textContent=`❌ ${err.message}`;
+      }
+      document.getElementById('ld2').classList.add('hidden');
+    });
+
+    function processarFicha2(linhas) {
+      let meta = { Nome:"", CPF:"", Cargo:"", "Data Emissão":"" };
+      let dados = [];
+      let anoAtual = null, mesesAtivos = [], tipoAtual = null;
+
+      const p1 = linhas.filter(l=>l.pagina===1).map(l=>l.texto).join('\n');
+      const mN = p1.match(/NOME.*?\n(.+)/i); if(mN) meta.Nome = mN[1].trim();
+      const mC = p1.match(/\d{3}\.\d{3}\.\d{3}-\d{2}/); if(mC) meta.CPF = mC[0];
+      const mCG = p1.match(/CARGO.*?\n(.+)/i); if(mCG) meta.Cargo = mCG[1].trim();
+      const mE = p1.match(/EMISS[ÃA]O.*?(\d{2}\/\d{2}\/\d{4})/); if(mE) meta["Data Emissão"] = mE[1];
+
+      for(const l of linhas) {
+        const txt = l.texto;
+        const mA = txt.match(/\b(20\d{2}|19\d{2})\b/);
+        if(mA) anoAtual = parseInt(mA[1]);
+
+        let mesesDet = [];
+        for(const m in MESES2) if(txt.toUpperCase().includes(m)) mesesDet.push(m);
+        if(mesesDet.length >= 3) mesesAtivos = mesesDet;
+
+        const up = txt.toUpperCase();
+        if(up.includes("RENDIMENTO")) tipoAtual = "RECEITA";
+        else if(up.includes("DESCONTO")) tipoAtual = "DESCONTO";
+
+        const padrao = /(.+?)\s+((?:\d{1,3}(?:\.\d{3})*,\d{2}\s*)+)/;
+        const match = txt.match(padrao);
+        if(match && mesesAtivos.length>0 && anoAtual) {
+          const desc = limparTexto(match[1].trim()); // ✅ APLICA LIMPEZA
+          const vals = (match[2].match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || []);
+          for(let i=0; i<vals.length; i++) {
+            if(i>=mesesAtivos.length) break;
+            const mes = mesesAtivos[i];
+            const num = MESES2[mes];
+            const val = parseFloat(vals[i].replace(/\./g,'').replace(',','.'));
+            if(!isNaN(val) && val!==0) {
+              dados.push({ Discriminacao: desc, Valor: val, Competencia: `${String(num).padStart(2,'0')}/${anoAtual}`, Pagina: l.pagina, Ano: anoAtual, Tipo: tipoAtual || "INDEFINIDO" });
+            }
+          }
+        }
+      }
+      dados.sort((a,b)=>{
+        const [m1,y1]=a.Competencia.split('/').map(Number);
+        const [m2,y2]=b.Competencia.split('/').map(Number);
+        return y1-y2 || m1-m2;
+      });
+      return { dados, meta };
+    }
+
+    function renderizarMetadados2() {
+      document.getElementById('metaDisplay').innerHTML = Object.entries(metadados2).map(([k,v])=>`<div class="meta-box"><div class="meta-label">${k}</div><div class="meta-val">${v||'-'}</div></div>`).join('');
+    }
+    function renderizarFiltros2() {
+      const u = [...new Set(dados2.map(r=>r.Discriminacao))].sort();
+      document.getElementById('chk2').innerHTML = u.map((r,i)=>{
+        const checked = isRubricaPrincipal(r) ? 'checked' : ''; // ✅ SELEÇÃO PADRÃO
+        return `<div class="chk-item"><input type="checkbox" id="r2_${i}" value="${r}" ${checked}><label for="r2_${i}">${r}</label></div>`;
+      }).join('');
+      atualizarContador2();
+    }
+    function getSel2() { return Array.from(document.querySelectorAll('#chk2 input:checked')).map(c=>c.value); }
+    function atualizarContador2() { const s=document.querySelectorAll('#chk2 input:checked').length; document.getElementById('cnt2').textContent=`${s} selecionadas`; }
+    function atualizarTabela2() {
+      const s=getSel2(), t=Array.from(document.getElementById('tp2').selectedOptions).map(o=>o.value);
+      const f = dados2.filter(r=>s.includes(r.Discriminacao) && t.includes(r.Tipo));
+      document.querySelector('#tbl2 tbody').innerHTML = f.map(r=>`<tr><td>${r.Discriminacao}</td><td>${r.Valor.toFixed(2).replace('.',',')}</td><td>${r.Competencia}</td><td>${r.Pagina}</td><td>${r.Ano}</td><td>${r.Tipo}</td></tr>`).join('');
+    }
+    document.getElementById('chk2').addEventListener('change',()=>{atualizarTabela2();atualizarContador2();});
+    document.getElementById('tp2').addEventListener('change',atualizarTabela2);
+    function exportXLSX2() {
+      const s=getSel2(), t=Array.from(document.getElementById('tp2').selectedOptions).map(o=>o.value);
+      const f = dados2.filter(r=>s.includes(r.Discriminacao) && t.includes(r.Tipo));
+      if(!f.length) return alert('Selecione rubricas.');
+      const wb = XLSX.utils.book_new();
+      const d1 = f.map(r=>({...r, Valor: r.Valor.toFixed(2).replace('.',',')}));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(d1), "Rubricas Detalhadas");
+      const consol = {};
+      f.forEach(r=>{ const k=`${r.Ano}|${r.Discriminacao}`; consol[k]=(consol[k]||0)+r.Valor; });
+      const c2 = Object.entries(consol).map(([k,v])=>{ const [a,d]=k.split('|'); return {Ano:parseInt(a), Discriminacao:d, Valor:v.toFixed(2).replace('.',',')}; });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(c2), "Consolidado Anual");
+      const m3 = Object.entries(metadados2).map(([k,v])=>({Campo:k, Valor:v}));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(m3), "Relatorio Servidor");
+      XLSX.writeFile(wb, "ficha_financeira_extraida.xlsx");
+    }
+  </script>
+</body>
+</html>
